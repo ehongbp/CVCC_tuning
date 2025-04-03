@@ -8,67 +8,35 @@
 ##### Österreichische Daten gehen in der Positions bis 2015-04-21
 ##### der LTV wird bis FS16 berechnet, damit die Verifizierung auf HW22 gemacht werden kann und dort der LTV bis HW15 gebildet werden kann
 
+DECLARE Start DATE DEFAULT CURRENT_DATE();
 
-declare Start date;
+DECLARE FirmID_decl int64 DEFAULT 1;
+DECLARE MandantID_decl int64 DEFAULT 2;
 
-declare FirmID_decl int64;
-declare MandantID_decl int64;
+DECLARE S1A DATE DEFAULT DATE_SUB(Start, INTERVAL 182 day);
+DECLARE S2A DATE DEFAULT DATE_SUB(Start, INTERVAL 365 day);
+DECLARE S3A DATE DEFAULT DATE_SUB(Start, INTERVAL 547 day);
+DECLARE S4A DATE DEFAULT DATE_SUB(Start, INTERVAL 730 day);
+DECLARE S5A DATE DEFAULT DATE_SUB(Start, INTERVAL 912 day);
+DECLARE S6A DATE DEFAULT DATE_SUB(Start, INTERVAL 1095 day);
+DECLARE S7A DATE DEFAULT DATE_SUB(Start, INTERVAL 1277 day);
+DECLARE S8A DATE DEFAULT DATE_SUB(Start, INTERVAL 1460 day);
 
-declare S1A date;
-declare S2A date;
-declare S3A date;
-declare S4A date;
-declare S5A date;
-declare S6A date;
-declare S7A date;
-declare S8A date;
+DECLARE S1E DATE DEFAULT DATE_SUB(Start, INTERVAL 1 day);
+DECLARE S2E DATE DEFAULT DATE_SUB(Start, INTERVAL 183 day);
+DECLARE S3E DATE DEFAULT DATE_SUB(Start, INTERVAL 366 day);
+DECLARE S4E DATE DEFAULT DATE_SUB(Start, INTERVAL 548 day);
+DECLARE S5E DATE DEFAULT DATE_SUB(Start, INTERVAL 731 day);
+DECLARE S6E DATE DEFAULT DATE_SUB(Start, INTERVAL 913 day);
+DECLARE S7E DATE DEFAULT DATE_SUB(Start, INTERVAL 1096 day);
+DECLARE S8E DATE DEFAULT DATE_SUB(Start, INTERVAL 1278 day);
 
-declare S1E date;
-declare S2E date;
-declare S3E date;
-declare S4E date;
-declare S5E date;
-declare S6E date;
-declare S7E date;
-declare S8E date;
+DECLARE Q1A DATE DEFAULT DATE_SUB(Start, INTERVAL 92 day);
+DECLARE Q2A DATE DEFAULT DATE_SUB(Start, INTERVAL 182 day);
 
-declare Q1A date;
-declare Q2A date;
-
-declare Q1E date;
-declare Q2E date;
-declare EarliestDate date;
-
-set Start = current_date();
-
-set FirmID_decl= 1;
-set MandantID_decl = 2;
-set EarliestDate = (select date_sub(Start, interval 4567 day) as EarliestDate);
-
-set S1A = (select date_sub(Start, interval 182 day) as S1A);
-set S2A = (select date_sub(Start, interval 365 day) as S2A);
-set S3A = (select date_sub(Start, interval 547 day) as S3A);
-set S4A = (select date_sub(Start, interval 730 day) as S4A);
-set S5A = (select date_sub(Start, interval 912 day) as S5A);
-set S6A = (select date_sub(Start, interval 1095 day) as S6A);
-set S7A = (select date_sub(Start, interval 1277 day) as S7A);
-set S8A = (select date_sub(Start, interval 1460 day) as S8A);
-
-set S1E = (select date_sub(Start, interval 1 day) as S1E);
-set S2E = (select date_sub(Start, interval 183 day) as S2E);
-set S3E = (select date_sub(Start, interval 366 day) as S3E);
-set S4E = (select date_sub(Start, interval 548 day) as S4E);
-set S5E = (select date_sub(Start, interval 731 day) as S5E);
-set S6E = (select date_sub(Start, interval 913 day) as S6E);
-set S7E = (select date_sub(Start, interval 1096 day) as S7E);
-set S8E = (select date_sub(Start, interval 1278 day) as S8E);
-
-
-set Q1A = (select date_sub(Start, interval 92 day) as Q1A);
-set Q2A = (select date_sub(Start, interval 182 day) as Q2A);
-
-set Q1E = (select date_sub(Start, interval 1 day) as Q1E);
-set Q2E = (select date_sub(Start, interval 93 day) as Q2E);
+DECLARE Q1E DATE DEFAULT DATE_SUB(Start, INTERVAL 1 day);
+DECLARE Q2E DATE DEFAULT DATE_SUB(Start, INTERVAL 93 day);
+DECLARE EarliestDate DATE DEFAULT DATE_SUB(Start, INTERVAL 4567 day);
 
 
 /*
