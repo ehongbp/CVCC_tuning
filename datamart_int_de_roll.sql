@@ -8,6 +8,7 @@
 ##### Österreichische Daten gehen in der Positions bis 2015-04-21
 ##### der LTV wird bis FS16 berechnet, damit die Verifizierung auf HW22 gemacht werden kann und dort der LTV bis HW15 gebildet werden kann
 
+
 DECLARE Start DATE DEFAULT CURRENT_DATE();
 
 DECLARE FirmID_decl int64 DEFAULT 1;
@@ -38,7 +39,6 @@ DECLARE Q1E DATE DEFAULT DATE_SUB(Start, INTERVAL 1 day);
 DECLARE Q2E DATE DEFAULT DATE_SUB(Start, INTERVAL 93 day);
 DECLARE EarliestDate DATE DEFAULT DATE_SUB(Start, INTERVAL 4567 day);
 
-
 /*
 --- Auskommentiert, weil dieser Vorgang sowieso schon im BQ-Lauf des CVCC-Modells passiert.
 delete from `bpde-prd-core-dwh.sde.mkr_cvcc_positions` where ReportingDate between S2A and S1E;
@@ -50,45 +50,55 @@ where date(ReportingDate) between S2A and S1E
 */
 
 ------------------- Aktive Kunden
-create or replace table `bpde-prd-core-dwh.sde.aktivekunden_int_de_roll`
-options(expiration_timestamp=TIMESTAMP_ADD(current_timestamp, INTERVAL 12 Hour))
-as (
-
-with tmp as (
-SELECT bpid, accountdate, sum(KPIValueVK) as nf  
-from `bpde-prd-core-dwh.sde.mkr_cvcc_positions`
-where rectype=1	
-  and accountdate <= date_sub(Start, interval 1461 Day) 
-	and date(reportingdate) >= date_sub(Start, interval 1461 Day) 	
-	group by 1, 2
-)
-
-SELECT b.bpid, b.accountDate
-from `bpde-prd-core-dwh.vde.customeroverview` b
-left outer join tmp ON b.bpid=tmp.bpid and tmp.accountDate=b.accountDate
-where b.accountdate <= date_sub(Start, interval 1461 Day) 
-	and coalesce(tmp.nf,0)=0
-);
-
+CREATE OR REPLACE TABLE `bpde-prd-core-dwh.sde.aktivekunden_int_de_roll` 
+OPTIONS(expiration_timestamp=TIMESTAMP_ADD(current_timestamp, INTERVAL 12 Hour)) AS (
+  WITH
+    tmp AS (
+    SELECT
+      bpid,
+      accountdate,
+      SUM(KPIValueVK) AS nf
+    FROM
+      `bpde-prd-core-dwh.sde.mkr_cvcc_positions`
+    WHERE
+      rectype=1
+      AND accountdate <= DATE_SUB(Start, INTERVAL 1461 Day)
+      AND DATE(reportingdate) >= DATE_SUB(Start, INTERVAL 1461 Day)
+    GROUP BY
+      1,
+      2 )
+  SELECT
+    b.bpid,
+    b.accountDate
+  FROM
+    `bpde-prd-core-dwh.vde.customeroverview` b
+  LEFT OUTER JOIN
+    tmp
+  ON
+    b.bpid=tmp.bpid
+    AND tmp.accountDate=b.accountDate
+  WHERE
+    b.accountdate <= DATE_SUB(Start, INTERVAL 1461 Day)
+    AND COALESCE(tmp.nf,0)=0 );
 
 ------------------------------ Eckwerte
 
 create or replace table `bpde-prd-core-dwh.sde.eckwerte_gesamt_int_de_roll`
-options(expiration_timestamp=TIMESTAMP_ADD(current_timestamp, INTERVAL 12 Hour))
-as (
-Select bpid, accountDate
-      , sum(CASE when date(ReportingDate) between S1A and S1E and RecType = 1 then KPIValueVK end) bbwS1
-      , sum(CASE when date(ReportingDate) between S2A and S2E and RecType = 1 then KPIValueVK end) bbwS2
-      , sum(CASE when date(ReportingDate) between S3A and S3E and RecType = 1 then KPIValueVK end) bbwS3
-      , sum(CASE when date(ReportingDate) between S4A and S4E and RecType = 1 then KPIValueVK end) bbwS4
-      , sum(CASE when date(ReportingDate) between S5A and S5E and RecType = 1 then KPIValueVK end) bbwS5
-      , sum(CASE when date(ReportingDate) between S6A and S6E and RecType = 1 then KPIValueVK end) bbwS6
-      , sum(CASE when date(ReportingDate) between S7A and S7E and RecType = 1 then KPIValueVK end) bbwS7
-      , sum(CASE when date(ReportingDate) between S8A and S8E and RecType = 1 then KPIValueVK end) bbwS8
-from `bpde-prd-core-dwh.sde.mkr_cvcc_positions`
-where date(ReportingDate) between S8A and S1E
-    and rectype=1
-group by 1,2)	;
+options(expiration_timestamp = TIMESTAMP_ADD(current_timestamp, INTERVAL 12 Hour))
+AS (
+SELECT bpid, accountDate
+      , SUM(CASE WHEN DATE(ReportingDate) BETWEEN S1A AND S1E AND RecType = 1 THEN KPIValueVK END) bbwS1
+      , SUM(CASE WHEN DATE(ReportingDate) BETWEEN S2A AND S2E AND RecType = 1 THEN KPIValueVK END) bbwS2
+      , SUM(CASE WHEN DATE(ReportingDate) BETWEEN S3A AND S3E AND RecType = 1 THEN KPIValueVK END) bbwS3
+      , SUM(CASE WHEN DATE(ReportingDate) BETWEEN S4A AND S4E AND RecType = 1 THEN KPIValueVK END) bbwS4
+      , SUM(CASE WHEN DATE(ReportingDate) BETWEEN S5A AND S5E AND RecType = 1 THEN KPIValueVK END) bbwS5
+      , SUM(CASE WHEN DATE(ReportingDate) BETWEEN S6A AND S6E AND RecType = 1 THEN KPIValueVK END) bbwS6
+      , SUM(CASE WHEN DATE(ReportingDate) BETWEEN S7A AND S7E AND RecType = 1 THEN KPIValueVK END) bbwS7
+      , SUM(CASE WHEN DATE(ReportingDate) BETWEEN S8A AND S8E AND RecType = 1 THEN KPIValueVK END) bbwS8
+FROM `bpde-prd-core-dwh.sde.mkr_cvcc_positions`
+WHERE DATE(ReportingDate) BETWEEN S8A AND S1E
+    AND rectype=1
+GROUP BY 1,2);
 
 
 
