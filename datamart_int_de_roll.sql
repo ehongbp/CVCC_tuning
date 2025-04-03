@@ -48,7 +48,7 @@ from `bpde-prd-core-dwh.vde.positions`
 where date(ReportingDate) between S2A and S1E
 ;
 */
-
+create or replace table `bpde-prd-core-dwh.sde.datamart_int_de_roll` as (
 ------------------- Aktive Kunden
 WITH
     tmp AS (
@@ -1283,11 +1283,9 @@ where pv.mandant_id=MandantID_decl
       and testkunde = 0 
       and betr.gilt_von<=S1E and betr.gilt_bis>S1E 
       and pv.partition_date between S1A and S1E 
-group by 1);
+group by 1),
 
-create or replace table `bpde-prd-core-dwh.sde.dm_webshop_S2`                                                    
-options (expiration_timestamp=timestamp_add(current_timestamp, interval 12 hour))
-as (
+dm_webshop_S2 as (
 select ktnr_glob as bpid
 		, AVG(session_length_sek)                                                                           avg_session_length_S2
 		, sum(page_visits)                                                                                  pagevisits_S2
@@ -1454,12 +1452,9 @@ left outer join StyleviewBasis SVFTs ON SVFTs.wkorbid=pv.wkorbid
       and testkunde = 0 
       and pv.partition_Date between Q1A and Q1E 
       and gilt_von<=Q1E and gilt_bis>=Q1E
-group by 1)
-;
+group by 1),
 
-
-create or replace table `bpde-prd-core-dwh.sde.datamart_webshop_int_de_roll`
-as (
+datamart_webshop_int_de_roll as (
 select a.bpid, a.accountdate
       , avg_session_length_S1
 	, pagevisits_S1
@@ -1538,19 +1533,17 @@ select a.bpid, a.accountdate
 	, dob_Styles_Q1
 
 from dexbase_int_de_roll a
-left outer join `bpde-prd-core-dwh.sde.dm_webshop_S1` s1 on a.bpid=s1.bpid
-left outer join `bpde-prd-core-dwh.sde.dm_webshop_S2` s2 on a.bpid=s2.bpid
-left outer join `bpde-prd-core-dwh.sde.dm_webshop_S3` s3 on a.bpid=s3.bpid
-left outer join `bpde-prd-core-dwh.sde.dm_webshop_S4` s4 on a.bpid=s4.bpid
-left outer join `bpde-prd-core-dwh.sde.dm_webshop_S5` s5 on a.bpid=s5.bpid
-left outer join `bpde-prd-core-dwh.sde.dm_webshop_S6` s6 on a.bpid=s6.bpid
-left outer join `bpde-prd-core-dwh.sde.styleviewQ1_int_de_roll` styleQ1 on a.bpid=styleQ1.bpid
-);
+left outer join dm_webshop_S1 s1 on a.bpid=s1.bpid
+left outer join dm_webshop_S2 s2 on a.bpid=s2.bpid
+left outer join dm_webshop_S3 s3 on a.bpid=s3.bpid
+left outer join dm_webshop_S4 s4 on a.bpid=s4.bpid
+left outer join dm_webshop_S5 s5 on a.bpid=s5.bpid
+left outer join dm_webshop_S6 s6 on a.bpid=s6.bpid
+left outer join styleviewQ1_int_de_roll styleQ1 on a.bpid=styleQ1.bpid
+),
 
 
-
-create or replace table `bpde-prd-core-dwh.sde.datamart_int_de_roll` as (
-with basis as (
+basis as (
 select a.*
       , a.bpid as CustomerID
       , case 
@@ -1561,7 +1554,7 @@ select a.*
       , w.* except(bpid, accountdate)
 from dexbase_int_de_roll a
 left outer join `bpde-prd-core-dwh.sde.datamart_transactions_int_de_roll` t on a.bpid=t.bpid and a.accountDate=t.accountDate
-left outer join `bpde-prd-core-dwh.sde.datamart_webshop_int_de_roll` w on a.bpid=w.bpid and a.accountDate=w.accountDate
+left outer join datamart_webshop_int_de_roll w on a.bpid=w.bpid and a.accountDate=w.accountDate
 )
 
 select *,  row_number() over(partition by TargetGroupIndexRoll, TargetGroupindexRollOld) as rownumber
