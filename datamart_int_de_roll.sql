@@ -50,9 +50,7 @@ where date(ReportingDate) between S2A and S1E
 */
 
 ------------------- Aktive Kunden
-CREATE OR REPLACE TABLE `bpde-prd-core-dwh.sde.aktivekunden_int_de_roll` 
-OPTIONS(expiration_timestamp=TIMESTAMP_ADD(current_timestamp, INTERVAL 12 Hour)) AS (
-  WITH
+WITH
     tmp AS (
     SELECT
       bpid,
@@ -66,7 +64,9 @@ OPTIONS(expiration_timestamp=TIMESTAMP_ADD(current_timestamp, INTERVAL 12 Hour))
       AND DATE(reportingdate) >= DATE_SUB(Start, INTERVAL 1461 Day)
     GROUP BY
       1,
-      2 )
+      2 ),
+
+aktivekunden_int_de_roll AS (
   SELECT
     b.bpid,
     b.accountDate
@@ -79,13 +79,11 @@ OPTIONS(expiration_timestamp=TIMESTAMP_ADD(current_timestamp, INTERVAL 12 Hour))
     AND tmp.accountDate=b.accountDate
   WHERE
     b.accountdate <= DATE_SUB(Start, INTERVAL 1461 Day)
-    AND COALESCE(tmp.nf,0)=0 );
-
+    AND COALESCE(tmp.nf,0)=0 
+    
+    ),
 ------------------------------ Eckwerte
-
-create or replace table `bpde-prd-core-dwh.sde.eckwerte_gesamt_int_de_roll`
-options(expiration_timestamp = TIMESTAMP_ADD(current_timestamp, INTERVAL 12 Hour))
-AS (
+eckwerte_gesamt_int_de_roll AS (
 SELECT bpid, accountDate
       , SUM(CASE WHEN DATE(ReportingDate) BETWEEN S1A AND S1E AND RecType = 1 THEN KPIValueVK END) bbwS1
       , SUM(CASE WHEN DATE(ReportingDate) BETWEEN S2A AND S2E AND RecType = 1 THEN KPIValueVK END) bbwS2
@@ -98,13 +96,14 @@ SELECT bpid, accountDate
 FROM `bpde-prd-core-dwh.sde.mkr_cvcc_positions`
 WHERE DATE(ReportingDate) BETWEEN S8A AND S1E
     AND rectype=1
-GROUP BY 1,2);
+GROUP BY 1,2
+),
 
 
 
 ------------------ Dexbase-Table zusammenbauen
 
-CREATE or Replace table `bpde-prd-core-dwh.sde.dexbase_int_de_roll` as (
+dexbase_int_de_roll as (
 
 Select a.bpid, a.accountDate, 
 cast((date_diff(Start, cast((`bonprix-pps-bigquery-prod`.functions.dec_bdate(MandantID_decl, a.birthdate)) as date), day)/365) as int64) as Age,
@@ -227,8 +226,8 @@ when a.accountDate between S2A and S2E and coalesce(bbwS2,0) > 0  then 1
 else 0
 end NK3
 from `bpde-prd-core-dwh.vde.customeroverview` a 
-left outer join `bpde-prd-core-dwh.sde.eckwerte_gesamt_int_de_roll` eckw ON a.bpid=eckw.bpid and a.accountDate=eckw.accountDate	
-left outer join `bpde-prd-core-dwh.sde.aktivekunden_int_de_roll` actCust ON actCust.bpid=a.bpid and actCust.accountDate=a.accountDate
+left outer join eckwerte_gesamt_int_de_roll eckw ON a.bpid=eckw.bpid and a.accountDate=eckw.accountDate	
+left outer join aktivekunden_int_de_roll actCust ON actCust.bpid=a.bpid and actCust.accountDate=a.accountDate
 left outer join `bpde-prd-core-dwh.vde.addressoverview` ad on ad.bpid=a.bpid and ad.accountDate=a.accountDate
 left outer join (select bpid
                   from `bpde-prd-core-dwh.vde.businesspartnerexclusion`
@@ -239,13 +238,13 @@ where a.BPTypeID in ('Z001', 'Z019')
       and a.accountDate is not null 
       and coalesce(actCust.bpid,0)=0
       and coalesce(ex.bpid,0)=0
-);
+),
 
 
 ---------- Order-Quotes
 
 
-create or replace table `bpde-prd-core-dwh.sde.order_quotes_int_de_roll` as ( 
+order_quotes_int_de_roll as ( 
 with a as (
 select a.bpid,a.accountdate
       , count(distinct(case when date(reportingdate) between S1A and S1E then orderid end)) as Orders_S1
@@ -274,7 +273,7 @@ select a.bpid,a.accountdate
       , count(distinct(case when date(reportingdate) between S5A and S1E then orderid end)) as Orders_S1_5
       , count(distinct(case when date(reportingdate) between S5A and S1E and orderprofit>0 then orderid end)) as OrdersWithProfit_S1_5
       
-from `bpde-prd-core-dwh.sde.dexbase_int_de_roll` a
+from dexbase_int_de_roll a
 join (select bpid, reportingdate, orderid, OrderProfit_CRM as orderprofit
                 from `bpde-prd-core-dwh.vimc.order_profit`
                 where firmid=FirmID_decl and reportingdate>=S8A+1 and OrderProfit_CRM <> 0) b on a.bpid=b.bpid
@@ -291,14 +290,12 @@ select bpid, accountdate
       , Orders_S45, OrdersWithProfit_S45, round((case when Orders_S45>0 then (OrdersWithProfit_S45/Orders_S45) else 0 end),3) as PositiveOrderRate_S45
       , Orders_S1_5, OrdersWithProfit_S1_5, round((case when Orders_S1_5>0 then (OrdersWithProfit_S1_5/Orders_S1_5) else 0 end),3) as PositiveOrderRate_S1_5
 from a
-);
+),
 
 
 ---- Newsletter
 
-create or replace table `bpde-prd-core-dwh.sde.tmp_NL_int_de_roll` 
-options (expiration_timestamp=timestamp_add(current_timestamp, interval 12 hour))
-as (
+tmp_NL_int_de_roll as (
 select bpid
        , sum(case when datum between S1A and S1E then send end) as send_S1
        , sum(case when datum between S1A and S1E then clicked end) clicked_S1
@@ -325,22 +322,18 @@ select bpid
        , sum(case when datum between S6A and S6E then opened end) opened_S6
 from `bpde-prd-core-dwh.sde.clicks_int`
 where firmid=FirmID_decl and datum between S6A and S1E
-group by 1);
+group by 1),
 
 
-create or replace table `bpde-prd-core-dwh.sde.tmp_permission_int_de_roll` 
-options (expiration_timestamp=timestamp_add(current_timestamp, interval 12 hour))
+tmp_permission_int_de_roll
 as (
 select bpid, accountdate, push_perm, nl_perm
 from `bpde-prd-core-dwh.vde.v_nl_push_perm_hist`
 where valid_from<=S1E and valid_to>S1E
-);
+),
 
 
-
-create or replace table `bpde-prd-core-dwh.sde.tmp_profit_int_de_roll`
-options (expiration_timestamp=timestamp_add(current_timestamp, interval 12 hour))
-as (
+tmp_profit_int_de_roll as (
 select bpid
        , sum(case when date(reportingdate) between S1A and S1E then OrderProfit_CRM end) as orderprofit_S1
        , sum(case when date(reportingdate) between S2A and S2E then OrderProfit_CRM end) as orderprofit_S2  
@@ -351,12 +344,9 @@ select bpid
 from `bpde-prd-core-dwh.vimc.order_profit`
 where firmid=FirmID_decl and date(reportingdate)>=S6A
 group by 1
-);
+),
 
-
-
-create or replace table `bpde-prd-core-dwh.sde.tmp_pos_S1` 
-options (expiration_timestamp=timestamp_add(current_timestamp, interval 12 hour))
+tmp_pos_S1
 as (
 select pos.bpid, pos.accountDate, 
       sum (case when recType=91 then cast(KPIValueQty as int64) end) Nabs_ges_S1,			-- Nabs Gesamt
@@ -408,11 +398,9 @@ from `bpde-prd-core-dwh.sde.mkr_cvcc_positions` pos
 	where date(reportingdate) between S1A and S1E
             and date(orderdate) between S1A and S1E
 group by 1,2
-) ;
+),
 
-create or replace table `bpde-prd-core-dwh.sde.tmp_pos_S2` 
-options (expiration_timestamp=timestamp_add(current_timestamp, interval 12 hour))
-as (
+tmp_pos_S2 as (
 select pos.bpid, pos.accountDate, 
       sum (case when recType=91 then cast(KPIValueQty as int64) end) Nabs_ges_S2,			-- Nabs Gesamt
 	sum (case when recType=91 then cast(KPIValueVK as int64) end) Nums_ges_S2,				-- Nums Gesamt
@@ -463,12 +451,9 @@ from `bpde-prd-core-dwh.sde.mkr_cvcc_positions` pos
 	where date(reportingdate) between S2A and S2E+35
             and date(orderdate) between S2A and S2E
 group by 1,2
-) ;
+),
 
-
-create or replace table `bpde-prd-core-dwh.sde.tmp_pos_S3` 
-options (expiration_timestamp=timestamp_add(current_timestamp, interval 12 hour))
-as (
+tmp_pos_S3 as (
 select pos.bpid, pos.accountDate, 
       sum (case when recType=91 then cast(KPIValueQty as int64) end) Nabs_ges_S3,			-- Nabs Gesamt
 	sum (case when recType=91 then cast(KPIValueVK as int64) end) Nums_ges_S3,				-- Nums Gesamt
@@ -519,12 +504,9 @@ from `bpde-prd-core-dwh.sde.mkr_cvcc_positions` pos
 	where date(reportingdate) between S3A and S3E+35
             and date(orderdate) between S3A and S3E
 group by 1,2
-) ;
+),
 
-
-create or replace table `bpde-prd-core-dwh.sde.tmp_pos_S4` 
-options (expiration_timestamp=timestamp_add(current_timestamp, interval 12 hour))
-as (
+tmp_pos_S4 as (
 select pos.bpid, pos.accountDate, 
       sum (case when recType=91 then cast(KPIValueQty as int64) end) Nabs_ges_S4,			-- Nabs Gesamt
 	sum (case when recType=91 then cast(KPIValueVK as int64) end) Nums_ges_S4,				-- Nums Gesamt
@@ -575,12 +557,9 @@ from `bpde-prd-core-dwh.sde.mkr_cvcc_positions` pos
 	where date(reportingdate) between S4A and S4E+35
             and date(orderdate) between S4A and S4E
 group by 1,2
-) ;
+),
 
-
-create or replace table `bpde-prd-core-dwh.sde.tmp_pos_S5` 
-options (expiration_timestamp=timestamp_add(current_timestamp, interval 12 hour))
-as (
+tmp_pos_S5 as (
 select pos.bpid, pos.accountDate, 
       sum (case when recType=91 then cast(KPIValueQty as int64) end) Nabs_ges_S5,			-- Nabs Gesamt
 	sum (case when recType=91 then cast(KPIValueVK as int64) end) Nums_ges_S5,				-- Nums Gesamt
@@ -631,12 +610,9 @@ from `bpde-prd-core-dwh.sde.mkr_cvcc_positions` pos
 	where date(reportingdate) between S5A and S5E+35
             and date(orderdate) between S5A and S5E
 group by 1,2
-) ;
+),
 
-
-create or replace table `bpde-prd-core-dwh.sde.tmp_pos_S6` 
-options (expiration_timestamp=timestamp_add(current_timestamp, interval 12 hour))
-as (
+tmp_pos_S6 as (
 select pos.bpid, pos.accountDate, 
       sum (case when recType=91 then cast(KPIValueQty as int64) end) Nabs_ges_S6,			-- Nabs Gesamt
 	sum (case when recType=91 then cast(KPIValueVK as int64) end) Nums_ges_S6,				-- Nums Gesamt
@@ -687,11 +663,9 @@ from `bpde-prd-core-dwh.sde.mkr_cvcc_positions` pos
 	where date(reportingdate) between S6A and S6E+35
             and date(orderdate) between S6A and S6E
 group by 1,2
-) ;
+),
 
-create or replace table `bpde-prd-core-dwh.sde.tmp_pos_S7` 
-options (expiration_timestamp=timestamp_add(current_timestamp, interval 12 hour))
-as (
+tmp_pos_S7 as (
 select pos.bpid, pos.accountDate, 
       sum (case when recType=91 then cast(KPIValueQty as int64) end) Nabs_ges_S7,			-- Nabs Gesamt
 	sum (case when recType=91 then cast(KPIValueVK as int64) end) Nums_ges_S7,				-- Nums Gesamt
@@ -742,12 +716,9 @@ from `bpde-prd-core-dwh.sde.mkr_cvcc_positions` pos
 	where date(reportingdate) between S7A and S7E+35
             and date(orderdate) between S7A and S7E
 group by 1,2
-) ;
+),
 
-
-create or replace table `bpde-prd-core-dwh.sde.tmp_pos_S8` 
-options (expiration_timestamp=timestamp_add(current_timestamp, interval 12 hour))
-as (
+tmp_pos_S8 as (
 select pos.bpid, pos.accountDate, 
       sum (case when recType=91 then cast(KPIValueQty as int64) end) Nabs_ges_S8,			-- Nabs Gesamt
 	sum (case when recType=91 then cast(KPIValueVK as int64) end) Nums_ges_S8,				-- Nums Gesamt
@@ -798,12 +769,9 @@ from `bpde-prd-core-dwh.sde.mkr_cvcc_positions` pos
 	where date(reportingdate) between S8A and S8E+35
             and date(orderdate) between S8A and S8E
 group by 1,2
-) ;
+),
 
-
-create or replace table `bpde-prd-core-dwh.sde.tmp_pos_ltv` 
-options (expiration_timestamp=timestamp_add(current_timestamp, interval 12 hour))
-as (
+tmp_pos_ltv as (
 select pos.bpid, pos.accountDate, 
       count(distinct(case when recType=1 then pos.OrderID end)) LifeTimeOrders,		
       sum (case when recType=5 then cast(KPIValueVK as int64) end) LifetimeGrossSalesAmt,
@@ -819,12 +787,9 @@ from `bpde-prd-core-dwh.sde.mkr_cvcc_positions` pos
 	where date(reportingdate) between EarliestDate and S1E
             and date(orderdate) between EarliestDate and S1E
 group by 1,2
-) ;
+),
 
-
-
-
-create or replace table `bpde-prd-core-dwh.sde.datamart_transactions_int_de_roll` as (
+datamart_transactions_int_de_roll as (
 select a.bpid
 , a.accountDate	
 , a.Age
@@ -1186,21 +1151,21 @@ select a.bpid
       coalesce(aktiOL_S4,0) + 
       coalesce(aktiOL_S5,0)) as AktivOLKennzeichen
 
-from `bpde-prd-core-dwh.sde.dexbase_int_de_roll` a
+from dexbase_int_de_roll a
 
-left outer join `bpde-prd-core-dwh.sde.tmp_pos_S1` s1 on a.bpid=s1.bpid and a.accountDate=s1.accountDate
-left outer join `bpde-prd-core-dwh.sde.tmp_pos_S2` s2 on a.bpid=s2.bpid and a.accountDate=s2.accountDate
-left outer join `bpde-prd-core-dwh.sde.tmp_pos_S3` s3 on a.bpid=s3.bpid and a.accountDate=s3.accountDate
-left outer join `bpde-prd-core-dwh.sde.tmp_pos_S4` s4 on a.bpid=s4.bpid and a.accountDate=s4.accountDate
-left outer join `bpde-prd-core-dwh.sde.tmp_pos_S5` s5 on a.bpid=s5.bpid and a.accountDate=s5.accountDate
-left outer join `bpde-prd-core-dwh.sde.tmp_pos_S6` s6 on a.bpid=s6.bpid and a.accountDate=s6.accountDate
-left outer join `bpde-prd-core-dwh.sde.tmp_pos_S7` s7 on a.bpid=s7.bpid and a.accountDate=s7.accountDate
-left outer join `bpde-prd-core-dwh.sde.tmp_pos_S8` s8 on a.bpid=s8.bpid and a.accountDate=s8.accountDate
-left outer join `bpde-prd-core-dwh.sde.tmp_pos_ltv` ltv on a.bpid=ltv.bpid and a.accountDate=ltv.accountDate
+left outer join tmp_pos_S1 s1 on a.bpid=s1.bpid and a.accountDate=s1.accountDate
+left outer join tmp_pos_S2 s2 on a.bpid=s2.bpid and a.accountDate=s2.accountDate
+left outer join tmp_pos_S3 s3 on a.bpid=s3.bpid and a.accountDate=s3.accountDate
+left outer join tmp_pos_S4 s4 on a.bpid=s4.bpid and a.accountDate=s4.accountDate
+left outer join tmp_pos_S5 s5 on a.bpid=s5.bpid and a.accountDate=s5.accountDate
+left outer join tmp_pos_S6 s6 on a.bpid=s6.bpid and a.accountDate=s6.accountDate
+left outer join tmp_pos_S7 s7 on a.bpid=s7.bpid and a.accountDate=s7.accountDate
+left outer join tmp_pos_S8 s8 on a.bpid=s8.bpid and a.accountDate=s8.accountDate
+left outer join tmp_pos_ltv ltv on a.bpid=ltv.bpid and a.accountDate=ltv.accountDate
 
-left outer join `bpde-prd-core-dwh.sde.tmp_NL_int_de_roll` nl on a.bpid=nl.bpid
-left outer join `bpde-prd-core-dwh.sde.tmp_profit_int_de_roll` op on a.bpid=op.bpid
-left outer join `bpde-prd-core-dwh.sde.tmp_permission_int_de_roll` perm on a.bpid=perm.bpid
+left outer join tmp_NL_int_de_roll nl on a.bpid=nl.bpid
+left outer join tmp_profit_int_de_roll op on a.bpid=op.bpid
+left outer join tmp_permission_int_de_roll perm on a.bpid=perm.bpid
 left outer join (select bpid
                         , case when TexBM_ges_S1>0 then 1 end Tex
                         , case when SchuhBM_ges_S1>0 then 1 end Schuhe
@@ -1211,7 +1176,7 @@ left outer join (select bpid
                         , case when SportBM_ges_S1>0 then 1 end Sport
                         , case when AccBM_ges_S1>0 then 1 end Acc
                         , case when DobBM_ges_S1>0 then 1 end Dob         
-                  from `bpde-prd-core-dwh.sde.tmp_pos_S1`) sort1 on sort1.bpid=a.bpid
+                  from tmp_pos_S1) sort1 on sort1.bpid=a.bpid
 left outer join (select bpid
                         , case when TexBM_ges_S2>0 then 1 end Tex
                         , case when SchuhBM_ges_S2>0 then 1 end Schuhe
@@ -1222,7 +1187,7 @@ left outer join (select bpid
                         , case when SportBM_ges_S2>0 then 1 end Sport
                         , case when AccBM_ges_S2>0 then 1 end Acc
                         , case when DobBM_ges_S2>0 then 1 end Dob         
-                  from `bpde-prd-core-dwh.sde.tmp_pos_S2`) sort2 on sort2.bpid=a.bpid
+                  from tmp_pos_S2) sort2 on sort2.bpid=a.bpid
 left outer join (select bpid
                         , case when TexBM_ges_S3>0 then 1 end Tex
                         , case when SchuhBM_ges_S3>0 then 1 end Schuhe
@@ -1233,7 +1198,7 @@ left outer join (select bpid
                         , case when SportBM_ges_S3>0 then 1 end Sport
                         , case when AccBM_ges_S3>0 then 1 end Acc
                         , case when DobBM_ges_S3>0 then 1 end Dob         
-                  from `bpde-prd-core-dwh.sde.tmp_pos_S3`) sort3 on sort3.bpid=a.bpid
+                  from tmp_pos_S3) sort3 on sort3.bpid=a.bpid
 left outer join (select bpid
                         , case when TexBM_ges_S4>0 then 1 end Tex
                         , case when SchuhBM_ges_S4>0 then 1 end Schuhe
@@ -1244,7 +1209,7 @@ left outer join (select bpid
                         , case when SportBM_ges_S4>0 then 1 end Sport
                         , case when AccBM_ges_S4>0 then 1 end Acc
                         , case when DobBM_ges_S4>0 then 1 end Dob         
-                  from `bpde-prd-core-dwh.sde.tmp_pos_S4`) sort4 on sort4.bpid=a.bpid
+                  from tmp_pos_S4) sort4 on sort4.bpid=a.bpid
 left outer join (select bpid
                         , case when TexBM_ges_S5>0 then 1 end Tex
                         , case when SchuhBM_ges_S5>0 then 1 end Schuhe
@@ -1255,7 +1220,7 @@ left outer join (select bpid
                         , case when SportBM_ges_S5>0 then 1 end Sport
                         , case when AccBM_ges_S5>0 then 1 end Acc
                         , case when DobBM_ges_S5>0 then 1 end Dob         
-                  from `bpde-prd-core-dwh.sde.tmp_pos_S5`) sort5 on sort5.bpid=a.bpid
+                  from tmp_pos_S5) sort5 on sort5.bpid=a.bpid
 left outer join (select bpid
                         , case when TexBM_ges_S6>0 then 1 end Tex
                         , case when SchuhBM_ges_S6>0 then 1 end Schuhe
@@ -1266,7 +1231,7 @@ left outer join (select bpid
                         , case when SportBM_ges_S6>0 then 1 end Sport
                         , case when AccBM_ges_S6>0 then 1 end Acc
                         , case when DobBM_ges_S6>0 then 1 end Dob         
-                  from `bpde-prd-core-dwh.sde.tmp_pos_S6`) sort6 on sort6.bpid=a.bpid
+                  from tmp_pos_S6) sort6 on sort6.bpid=a.bpid
 left outer join (select a.bpid, a.accountdate
                   , case when coalesce(Nums_Ges_S1,0)>0 then 32 end akti_S1
                   , case when coalesce(Nums_Ges_S2,0)>0 then 16 end akti_S2
@@ -1278,25 +1243,24 @@ left outer join (select a.bpid, a.accountdate
                   , case when coalesce(Nums_online_S3,0)>0 then 8 end aktiOL_S3
                   , case when coalesce(Nums_online_S4,0)>0 then 4 end aktiOL_S4
                   , case when coalesce(Nums_online_S5,0)>0 then 2 end aktiOL_S5 
-                  from `bpde-prd-core-dwh.sde.dexbase_int_de_roll` a
-                  left outer join `bpde-prd-core-dwh.sde.tmp_pos_S1` s1 on s1.bpid=a.bpid 
+                  from dexbase_int_de_roll a
+                  left outer join tmp_pos_S1 s1 on s1.bpid=a.bpid 
                                     and s1.accountDate=a.accountdate
-                  left outer join `bpde-prd-core-dwh.sde.tmp_pos_S2` s2 on s2.bpid=a.bpid 
+                  left outer join tmp_pos_S2 s2 on s2.bpid=a.bpid 
                                     and s2.accountDate=a.accountdate
-                  left outer join `bpde-prd-core-dwh.sde.tmp_pos_S3` s3 on s3.bpid=a.bpid 
+                  left outer join tmp_pos_S3 s3 on s3.bpid=a.bpid 
                                     and s3.accountDate=a.accountdate
-                  left outer join `bpde-prd-core-dwh.sde.tmp_pos_S4` s4 on s4.bpid=a.bpid 
+                  left outer join tmp_pos_S4 s4 on s4.bpid=a.bpid 
                                     and s4.accountDate=a.accountdate
-                  left outer join `bpde-prd-core-dwh.sde.tmp_pos_S5` s5 on s5.bpid=a.bpid 
+                  left outer join tmp_pos_S5 s5 on s5.bpid=a.bpid 
                                     and s5.accountDate=a.accountdate
                   ) as akti on akti.bpid=a.bpid and akti.accountdate=a.accountDate
-);
+),
 
 
 ---- Webshop-Datamart
 
-create or replace table `bpde-prd-core-dwh.sde.dm_webshop_S1`                                                     
-options (expiration_timestamp=timestamp_add(current_timestamp, interval 12 hour))
+dm_webshop_S1
 as (
 select ktnr_glob as bpid
 		, AVG(session_length_sek)                                                                           avg_session_length_S1
@@ -1345,10 +1309,9 @@ where pv.mandant_id=MandantID_decl
       and testkunde = 0 
       and betr.gilt_von<=S1E and betr.gilt_bis>S1E 
       and pv.partition_date between S2A and S2E 
-group by 1);
+group by 1),
 
-create or replace table `bpde-prd-core-dwh.sde.dm_webshop_S3`                                                    
-options (expiration_timestamp=timestamp_add(current_timestamp, interval 12 hour))
+dm_webshop_S3
 as (
 select ktnr_glob as bpid
 		, AVG(session_length_sek)                                                                           avg_session_length_S3
@@ -1371,11 +1334,9 @@ where pv.mandant_id=MandantID_decl
       and testkunde = 0 
       and betr.gilt_von<=S1E and betr.gilt_bis>S1E 
       and pv.partition_date between S3A and S3E 
-group by 1);
+group by 1),
 
-
-create or replace table `bpde-prd-core-dwh.sde.dm_webshop_S4`                                                    
-options (expiration_timestamp=timestamp_add(current_timestamp, interval 12 hour))
+dm_webshop_S4
 as (
 select ktnr_glob as bpid
 		, AVG(session_length_sek)                                                                           avg_session_length_S4
@@ -1398,10 +1359,9 @@ where pv.mandant_id=MandantID_decl
       and testkunde = 0 
       and betr.gilt_von<=S1E and betr.gilt_bis>S1E  
       and pv.partition_date between S4A and S4E 
-group by 1);
+group by 1),
 
-create or replace table `bpde-prd-core-dwh.sde.dm_webshop_S5`                                                  
-options (expiration_timestamp=timestamp_add(current_timestamp, interval 12 hour))
+dm_webshop_S5
 as (
 select ktnr_glob as bpid
 		, AVG(session_length_sek)                                                                           avg_session_length_S5
@@ -1424,10 +1384,9 @@ where pv.mandant_id=MandantID_decl
       and testkunde = 0 
       and betr.gilt_von<=S1E and betr.gilt_bis>S1E  
       and pv.partition_date between S5A and S5E 
-group by 1);
+group by 1),
 
-create or replace table `bpde-prd-core-dwh.sde.dm_webshop_S6`                                                  
-options (expiration_timestamp=timestamp_add(current_timestamp, interval 12 hour))
+dm_webshop_S6
 as (
 select ktnr_glob as bpid
 		, AVG(session_length_sek)                                                                           avg_session_length_S6
@@ -1450,12 +1409,9 @@ where pv.mandant_id=MandantID_decl
       and testkunde = 0 
       and betr.gilt_von<=S1E and betr.gilt_bis>S1E  
       and pv.partition_date between S6A and S6E 
-group by 1);
+group by 1),
 
-
-
-create or replace table `bpde-prd-core-dwh.sde.styleviewQ1_int_de_roll`
-options(expiration_timestamp=TIMESTAMP_ADD(current_timestamp, INTERVAL 12 Hour))
+styleviewQ1_int_de_roll
 as (
 with StyleviewBasis as (
 SELECT wkorbid
@@ -1581,7 +1537,7 @@ select a.bpid, a.accountdate
 	, AnzStyles_Q1
 	, dob_Styles_Q1
 
-from `bpde-prd-core-dwh.sde.dexbase_int_de_roll` a
+from dexbase_int_de_roll a
 left outer join `bpde-prd-core-dwh.sde.dm_webshop_S1` s1 on a.bpid=s1.bpid
 left outer join `bpde-prd-core-dwh.sde.dm_webshop_S2` s2 on a.bpid=s2.bpid
 left outer join `bpde-prd-core-dwh.sde.dm_webshop_S3` s3 on a.bpid=s3.bpid
@@ -1603,7 +1559,7 @@ select a.*
         end TargetGroupindexRollOld
       , t.* except(bpid, accountdate, Age)
       , w.* except(bpid, accountdate)
-from `bpde-prd-core-dwh.sde.dexbase_int_de_roll` a
+from dexbase_int_de_roll a
 left outer join `bpde-prd-core-dwh.sde.datamart_transactions_int_de_roll` t on a.bpid=t.bpid and a.accountDate=t.accountDate
 left outer join `bpde-prd-core-dwh.sde.datamart_webshop_int_de_roll` w on a.bpid=w.bpid and a.accountDate=w.accountDate
 )
